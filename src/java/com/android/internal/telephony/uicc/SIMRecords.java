@@ -61,8 +61,6 @@ public class SIMRecords extends IccRecords {
     VoiceMailConstants mVmConfig;
 
 
-    SpnOverride mSpnOverride;
-
     // ***** Cached SIM State; cleared on channel close
 
     private boolean mCallForwardingEnabled;
@@ -101,7 +99,6 @@ public class SIMRecords extends IccRecords {
     public String toString() {
         return "SimRecords: " + super.toString()
                 + " mVmConfig" + mVmConfig
-                + " mSpnOverride=" + "mSpnOverride"
                 + " callForwardingEnabled=" + mCallForwardingEnabled
                 + " spnState=" + mSpnState
                 + " mCphsInfo=" + mCphsInfo
@@ -200,7 +197,6 @@ public class SIMRecords extends IccRecords {
         mAdnCache = new AdnRecordCache(mFh);
 
         mVmConfig = new VoiceMailConstants();
-        mSpnOverride = new SpnOverride();
 
         mRecordsRequested = false;  // No load request is made till SIM ready
 
@@ -1507,14 +1503,6 @@ public class SIMRecords extends IccRecords {
 
     //***** Private methods
 
-    private void setSpnFromConfig(String carrier) {
-        if (mSpnOverride.containsCarrier(carrier)) {
-            setServiceProviderName(mSpnOverride.getSpn(carrier));
-            setSystemProperty(PROPERTY_ICC_OPERATOR_ALPHA, getServiceProviderName());
-        }
-    }
-
-
     private void setVoiceMailByCountry (String spn) {
         if (mVmConfig.containsCarrier(spn)) {
             mIsVoiceMailFixed = true;
@@ -1732,6 +1720,7 @@ public class SIMRecords extends IccRecords {
      */
     private void getSpnFsm(boolean start, AsyncResult ar) {
         byte[] data;
+        boolean foundSpn = false;
 
         if (start) {
             // Check previous state to see if there is outstanding
@@ -1769,9 +1758,13 @@ public class SIMRecords extends IccRecords {
                     if (DBG) log("Load EF_SPN: " + getServiceProviderName()
                             + " spnDisplayCondition: " + mSpnDisplayCondition);
                     setSystemProperty(PROPERTY_ICC_OPERATOR_ALPHA, getServiceProviderName());
+                    if (!TextUtils.isEmpty(getServiceProviderName())) {
+                        foundSpn = true;
+                    }
 
                     mSpnState = GetSpnFsmState.IDLE;
-                } else {
+                }
+                if (!foundSpn) {
                     mFh.loadEFTransparent( EF_SPN_CPHS,
                             obtainMessage(EVENT_GET_SPN_DONE));
                     mRecordsToLoad++;
@@ -1791,8 +1784,13 @@ public class SIMRecords extends IccRecords {
                     if (DBG) log("Load EF_SPN_CPHS: " + getServiceProviderName());
                     setSystemProperty(PROPERTY_ICC_OPERATOR_ALPHA, getServiceProviderName());
 
+                    if (!TextUtils.isEmpty(getServiceProviderName())) {
+                        foundSpn = true;
+                    }
+
                     mSpnState = GetSpnFsmState.IDLE;
-                } else {
+                }
+                if (!foundSpn) {
                     mFh.loadEFTransparent(
                             EF_SPN_SHORT_CPHS, obtainMessage(EVENT_GET_SPN_DONE));
                     mRecordsToLoad++;
@@ -1807,9 +1805,16 @@ public class SIMRecords extends IccRecords {
 
                     if (DBG) log("Load EF_SPN_SHORT_CPHS: " + getServiceProviderName());
                     setSystemProperty(PROPERTY_ICC_OPERATOR_ALPHA, getServiceProviderName());
-                }else {
+
+                    if (!TextUtils.isEmpty(getServiceProviderName())) {
+                        foundSpn = true;
+                    }
+
+                }
+
+                if (!foundSpn) {
                     if (DBG) log("No SPN loaded in either CHPS or 3GPP");
-                    if (mPnnHomeName != null && mSpn == null) {
+                    if (mPnnHomeName != null && (mSpn == null || TextUtils.isEmpty(mSpn))) {
                         if (DBG) log("Falling back to home network name for SPN");
                         mSpn = mPnnHomeName;
                         setSystemProperty(PROPERTY_ICC_OPERATOR_ALPHA, mSpn);
@@ -1947,7 +1952,6 @@ public class SIMRecords extends IccRecords {
         pw.println(" extends:");
         super.dump(fd, pw, args);
         pw.println(" mVmConfig=" + mVmConfig);
-        pw.println(" mSpnOverride=" + mSpnOverride);
         pw.println(" mCallForwardingEnabled=" + mCallForwardingEnabled);
         pw.println(" mSpnState=" + mSpnState);
         pw.println(" mCphsInfo=" + mCphsInfo);
