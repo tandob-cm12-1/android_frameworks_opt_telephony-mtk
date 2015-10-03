@@ -1494,7 +1494,35 @@ public final class DcTracker extends DcTrackerBase {
     private void onApnChanged() {
         if (DBG) log("onApnChanged: tryRestartDataConnections");
         setInitialAttachApn(create3gppApnsList(), mSimRecords.get());
-        tryRestartDataConnections(true, Phone.REASON_APN_CHANGED);
+        tryRestartDataConnections(isApnCleanupNeeded(), Phone.REASON_APN_CHANGED);
+    }
+
+    private boolean isApnCleanupNeeded() {
+        boolean cleanUpApn = true;
+        for (ApnContext apnContext : mApnContexts.values()) {
+            if (DBG) log("cleanUpConnectionsOnUpdatedApns for " + apnContext);
+
+            ArrayList<ApnSetting> currentWaitingApns = apnContext.getWaitingApns();
+
+            if ((currentWaitingApns != null) && (!apnContext.isDisconnected())) {
+                int radioTech = mPhone.getServiceState().getRilDataRadioTechnology();
+                ArrayList<ApnSetting> waitingApns = buildWaitingApns(
+                        apnContext.getApnType(), radioTech);
+                if (DBG) log("new waitingApns:" + waitingApns);
+                if (waitingApns.size() == currentWaitingApns.size()) {
+                    cleanUpApn = false;
+                    for (int i = 0; i < waitingApns.size(); i++) {
+                        if (!currentWaitingApns.get(i).equals(waitingApns.get(i))) {
+                            if (DBG) log("new waiting apn is different at " + i);
+                            cleanUpApn = true;
+                            apnContext.setWaitingApns(waitingApns);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        return cleanUpApn;
     }
 
     private void tryRestartDataConnections(boolean isCleanupNeeded, String reason) {
@@ -1730,6 +1758,14 @@ public final class DcTracker extends DcTrackerBase {
         if (DBG) log("onNvReady");
         createAllApnList();
         setupDataOnConnectableApns(Phone.REASON_NV_READY);
+    }
+
+    private void onSimNotReady() {
+        if (DBG) log("onSimNotReady");
+
+        cleanUpAllConnections(true, Phone.REASON_SIM_NOT_READY);
+        mAllApnSettings = null;
+        mAutoAttachOnCreationConfig = false;
     }
 
     @Override
@@ -3155,6 +3191,8 @@ public final class DcTracker extends DcTrackerBase {
                 mIccRecords.set(newIccRecords);
                 newIccRecords.registerForRecordsLoaded(
                         this, DctConstants.EVENT_RECORDS_LOADED, null);
+            } else {
+                onSimNotReady();
             }
             // Records changed -> return true
             result = true;
